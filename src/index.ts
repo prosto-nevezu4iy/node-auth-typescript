@@ -1,14 +1,39 @@
-import express from 'express';
+import { Server } from 'http';
+import { createConnection } from 'typeorm';
+import app from './app';
 import config from './config/config';
+import logger from './config/logger';
 
-const app = express();
+let server: Server;
+createConnection().then(() => {
+  logger.info('Connected to Postgres');
+  server = app.listen(config.port, () => {
+    logger.info(`Listening to port ${config.port}`);
+  });
+});
 
-// parse json request body
-app.use(express.json());
+const exitHandler = () => {
+  if (server) {
+    server.close(() => {
+      logger.info('Server closed');
+      process.exit(1);
+    });
+  } else {
+    process.exit(1);
+  }
+};
 
-// parse urlencoded request body
-app.use(express.urlencoded({ extended: true }));
+const unexpectedErrorHandler = (error: Error) => {
+  logger.error(error);
+  exitHandler();
+};
 
-app.listen(config.port, () => {
-  console.log(`Listening to port ${config.port}`);
+process.on('uncaughtException', unexpectedErrorHandler);
+process.on('unhandledRejection', unexpectedErrorHandler);
+
+process.on('SIGTERM', () => {
+  logger.info('SIGTERM received');
+  if (server) {
+    server.close();
+  }
 });
